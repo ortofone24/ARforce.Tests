@@ -4,6 +4,7 @@ using ARforce.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using FluentAssertions;
+using ARforce.Common;
 
 namespace ARforce.Tests
 {
@@ -11,6 +12,10 @@ namespace ARforce.Tests
     {
         private readonly BooksController _controller;
         private readonly LibraryContext _context;
+        private readonly byte[] _rowVersion = { 0, 0, 0, 1 };  //This value is set only for simulation concurrency
+        private readonly IBookMapper _bookMapper;
+        private readonly IBookStatusValidator _bookStatusValidator;
+        private readonly ISortingAndPagination _sortingAndPagination;
 
         public BooksControllerTests()
         {
@@ -20,20 +25,23 @@ namespace ARforce.Tests
                 .Options;
 
             _context = new LibraryContext(options);
+            _bookMapper = new BookMapper();
+            _bookStatusValidator = new BookStatusValidator();
+            _sortingAndPagination = new SortingAndPagination();
 
             // Seed initial data
             SeedDatabase();
 
-            _controller = new BooksController(_context);
+            _controller = new BooksController(_context, _bookMapper, _bookStatusValidator, _sortingAndPagination);
         }
 
         private void SeedDatabase()
         {
             _context.Books.AddRange(new List<Book>
             {
-                new Book { Id = 1, Title = "Book A", Author = "Author A", ISBN = "ISBN-A", Status = BookStatus.OnShelf },
-                new Book { Id = 2, Title = "Book B", Author = "Author B", ISBN = "ISBN-B", Status = BookStatus.Borrowed },
-                new Book { Id = 3, Title = "Book C", Author = "Author C", ISBN = "ISBN-C", Status = BookStatus.Returned }
+                new Book { Id = 1, Title = "Book A", Author = "Author A", ISBN = "ISBN-A", Status = BookStatus.OnShelf, RowVersion = _rowVersion },
+                new Book { Id = 2, Title = "Book B", Author = "Author B", ISBN = "ISBN-B", Status = BookStatus.Borrowed, RowVersion = _rowVersion },
+                new Book { Id = 3, Title = "Book C", Author = "Author C", ISBN = "ISBN-C", Status = BookStatus.Returned, RowVersion = _rowVersion }
             });
             _context.SaveChanges();
         }
@@ -75,7 +83,7 @@ namespace ARforce.Tests
             var okResult = result as OkObjectResult;
             okResult.Should().NotBeNull();
 
-            var book = okResult.Value as Book;
+            var book = okResult.Value as ReturnBookDto;
             book.Should().NotBeNull();
             book.Id.Should().Be(bookId);
         }
@@ -112,7 +120,7 @@ namespace ARforce.Tests
             var createdAtActionResult = result as CreatedAtActionResult;
             createdAtActionResult.Should().NotBeNull();
 
-            var createdBook = createdAtActionResult.Value as Book;
+            var createdBook = createdAtActionResult.Value as ReturnBookDto;
             createdBook.Should().NotBeNull();
             createdBook.Id.Should().BeGreaterThan(0);
             createdBook.Title.Should().Be(newBookDto.Title);
